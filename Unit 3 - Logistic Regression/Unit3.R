@@ -49,8 +49,3 @@ plot(ROCperf, colorize= T, print.cutoffs.at = seq(0,1,0.1), text.adj = c(-0.2,1.
 # colors plot and adds 0.1 threshold data points
 # Determine AUC (area under chart) for predictTest 
 auc = as.numeric(performance(ROCpredicTest, "auc")@y.values)
-
-
-=======
-test for git
->>>>>>> d251cee6444609b23026f2a326424f16b5b66eed
