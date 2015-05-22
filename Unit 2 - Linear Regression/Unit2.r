@@ -1,5 +1,5 @@
 #### Wine Linear Regression Model
-
+install.packages("ggplot2")
 wine = read.csv("wine.csv")
 wineTest = read.csv("wine_test.csv")
 
@@ -27,6 +27,7 @@ SSE = sum((wineTest$Price - winePredict)^2)
 SST = sum((wineTest$Price - mean(wine$Price))^2)
 #R squared is then calculated:
 1 - SSE/SST
+
 ******************************************************
 #### Baseball data
 baseball = read.csv("baseball.csv")
@@ -50,6 +51,7 @@ teamRank = c(1,2,3,3,4,4,4,4,5,5)
 wins2012 = c(94,88,95,88,93,94,98,97,93,94)
 wins2013 = c(97,97,92,93,92,96,94,96,92,90)
 cor(teamRank, wins2012)
+
 ********************************************************
 #### NBA stats
 nba = read.csv("NBA_train.csv")
@@ -74,6 +76,7 @@ SSE = sum((PointsPrediction - nbaTest$PTS)^2)
 SST = sum((nbaTest$PTS - mean(nba$PTS))^2)
 R2 = 1 - SSE/SST
 RMSE = sqrt(SSE/nrow(nbaTest))
+
 *********************************************
 ### Climate Change
 cc = read.csv("climate_change.csv")
@@ -98,6 +101,7 @@ RMSE = sqrt(SSE/nrow(ccModel))
 
 ggplot(aes(x = Year, y = Temp), data = ccModel) + 
   stat_smooth(method = "lm")
+
 **************************************************
 ### Reading test scores
 pisaModel = read.csv("pisa2009train.csv")
@@ -124,6 +128,7 @@ scorePredict = predict(readingModel1, newdata = pisaTest)
 SSE = sum((scorePredict- pisaTest$readingScore)^2)
 SST = sum((mean(pisaModel$readingScore) - pisaTest$readingScore)^2)
 RMSE = sqrt(SSE/nrow(pisaTest))
+
 **********************************************
 ### Flu epidemics via search engine query data, using simple time series w/lag 
 fluTrain = read.csv("FluTrain.csv")
@@ -160,6 +165,7 @@ fluTest$ILILag2[2] = fluTrain$ILI[417]
 fluPredict2 = exp(predict(fluModel2, newdata = fluTest))
 SSE = sum((fluPredict2 - fluTest$ILI)^2)
 RMSE = sqrt(SSE/nrow(fluTest))
+
 *******************************************
 ### Hyudnai Elantra Car Sales
 elantra = read.csv("elantra.csv")
