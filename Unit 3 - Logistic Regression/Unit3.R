@@ -151,4 +151,34 @@ table(usTest$Republican, testPredict >= 0.5)
 # subset the test data to pin point where the mistake occurs i.e. when the prediction was for republican win but actual outcome was democrat
 subset(usTest, testPredict >= 0.5 & Republican == 0)
 *********************************
-  
+# Popularity of music records
+songs = read.csv("songs.csv")
+
+# First, subset the data into Train (all years up to and incl. 2009) and Test (all of 2010)
+songsTrain = subset(songs, songs$year <= 2009)
+songsTest = subset(songs, songs$year == 2010)
+# The dependent (or outcome) variabe is Top10
+# Build the first logistic regression model by treating all song attributes as independent variables
+songsLog1 = glm(Top10 ~ ., data = songsTrain, family = binomial)
+# To exclude the non song attributes e.g. year, artistname etc. create a vector of variables equal to these interested attributes
+nonvars = c("year","songtitle","artistname","songID", "artistID")
+songsTrain = songsTrain[, !(names(songsTrain) %in% nonvars)]
+songsTest = songsTest[, !(names(songsTest) %in% nonvars)]
+#Akaike Information Criterion (AIC) for this first logit model is 4827.2
+# Higher confidence leads to higher predicted probability of song being in the top 10, where higher confidence equates to less complex songs
+# Since there is high correlation (0.739906708) between loudness and energy, this model
+# exhibits multicollinearity 
+# Build two more logit models, one omitting loundess and the other energy each time
+songsLog2 = glm(Top10 ~ . - loudness, data = songsTrain, family = binomial)
+# subtracting the loundess variable works as it is a numeric type, whereas songtitle can't be omitted due to it being non-numeric
+# results show that energy now leads to high probability of song being in the top 10, but is not signficiance 
+songsLog3 = glm(Top10 ~ . -energy, data = songsTrain, family = binomial)
+# this again shows that the greater the loudness of a song the more liklihood for entry into the top 10
+# use logit model to make prediction at 45% probability using the test data set
+songsPredic = predict(songsLog3, newdata = songsTest, type = "response")
+table(songsTest$Top10, songsPredic >= 0.45)
+# accuracy of results show taht 87.8% prediction of song being in the top 10 charts
+# compared this to the baseline, we see that the accuracy is 84% (so a slight improvement)
+table(songsTest$Top10)
+# Sensitivity (true positive) = 0.32 i.e. 32% of the actual popsitive (in top 10) outcomes were accurately predicted
+# Specifity (true negative) = 0.98 i.e. 98% of the actual negative (no top 10) outcomes were accurately predicted
