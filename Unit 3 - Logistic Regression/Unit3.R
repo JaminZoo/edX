@@ -87,4 +87,68 @@ auc = as.numeric(performance(ROCRpredic, "auc")@y.values)
 # External validation with other sets of data (not Framingham) is critical to validate the train model
 #accuracy when predicting CHD risk for other ethnicities e.g. Black, Asian, Hispanic etc.
 
+**********************************
+# US Election results polling data
+USpoll = read.csv("PollingData.csv")
+# We want to use multiple imputation to fill in the missing i.e. "NA" values in the two polling data variables
+# Install the MICE (multiple imputation by chained equations) package
+install.packages("mice") 
+# Create new data frame that includes only four key variables
+USpoll.mice = USpoll[, c("Rasmussen", "SurveyUSA", "DiffCount", "PropR")]
+# Set random seed so that multiple imputation can be mirrored from video tutorial
+set.seed(144)
+# Run imputation using compelte function that calls the mice package on the newly created USpoll.mice data frame
+imputed = complete(mice(USpoll.mice))
+# results show that a total of 5 rounds of imputation was been run and produce no more missing values in either polling survey variable
+summary(imputed)
+# Now using the "filled in" values from our imputation, we can replace the variables back into the original data frame
+USpoll$Rasumssen = imputed$Rasmussen
+USpoll$SurveyUSA = imputed$SurveyUSA
+# Results should show no missing values, however some still exist in the Rasumussen variable after multiple imputation
+# Load in correctly imputed data set as provided
+USpoll2 = read.csv("PollingData_Imputed.csv")
 
+# Split this new data frame into Train and Test, where the 2004 and 2008 election years are Train and Test will be 2012
+usTrain = subset(USpoll2, Year == 2004 | Year == 2008)
+usTest = subset(USpoll2, Year == 2012)
+
+# Develop a baseline to compare our logistic regression model
+# A 'smart' baseline assumes that if the Democrat or Republican candidate is leading the polls,
+# then they are likely to win that seat. Using the sign function, we can assign a +1 to any republican vote
+# a -1 to any democratic vote and a 0 for any tied vote counts. 
+table(sign(usTrain$Rasmussen))
+# results show that the smart baseline predicts 56 instanaces of republican, 42 of demoncrate and 2 tie
+# Comparing this to the actual outcome of the election
+table(usTrain$Republican, sign(usTrain$Rasmussen))
+# shows fairly good alignment, with only 4 occurences where the actual outcome (demoncrate win) was predicted as a republican win
+
+# Determine correlation of the dependent and independent varaibles from the training data set
+cor(usTrain[c("Rasmussen","SurveyUSA", "DiffCount","PropR","Republican")])
+
+# Develop logistic regression model using the variable with the highest correlation to dependent variable i.e. PropR
+pollModel1 = glm(Republican ~ PropR, data = usTrain, family = "binomial")
+
+# Compute predictions of probablity that republican will win using the training set only
+pollPredict1 = predict(pollModel1, type = "response", newdata = usTrain)
+# Create confusion matrix to see how well republican win is predicted at 50% probability
+table(usTrain$Republican, pollPredict1 > 0.5)
+# results show that in comparison to the 'smart' baseline, the model predictions are wrong 4 times
+# 2 predicted republican wins where actual democrat is winner, and vice versa
+
+# Develop another model using two ind. var that have lower correlations e.g. SurveyUSA and DiffCount
+pollModel2 = glm(Republican ~ SurveyUSA + DiffCount, data = usTrain, family = "binomial")
+pollPredict2 = predict(pollModel2, type = "response", newdata = usTrain)
+table(usTrain$Republican, pollPredict2 > 0.5)
+# results show that there is only 1 less mistake made, in predicting a democrat win with actual outcome of republican win
+
+# Compare the baseline and the logistic model pollModel2 with the test data set
+table(usTest$Republican, sign(usTest$Rasmussen))
+# results show 4 mistakes and 2 inconclusive predictions on the testing data set
+# create predictions from the logit model using the test data set (previously only used Train)
+testPredict = predict(pollModel2, type = "response", newdata = usTest)
+table(usTest$Republican, testPredict >= 0.5)
+# results show that only 1 mistake is made with no inconclusive predictions. 
+# subset the test data to pin point where the mistake occurs i.e. when the prediction was for republican win but actual outcome was democrat
+subset(usTest, testPredict >= 0.5 & Republican == 0)
+*********************************
+  
