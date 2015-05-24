@@ -150,6 +150,7 @@ table(usTest$Republican, testPredict >= 0.5)
 # results show that only 1 mistake is made with no inconclusive predictions. 
 # subset the test data to pin point where the mistake occurs i.e. when the prediction was for republican win but actual outcome was democrat
 subset(usTest, testPredict >= 0.5 & Republican == 0)
+
 *********************************
 # Popularity of music records
 songs = read.csv("songs.csv")
@@ -177,8 +178,46 @@ songsLog3 = glm(Top10 ~ . -energy, data = songsTrain, family = binomial)
 # use logit model to make prediction at 45% probability using the test data set
 songsPredic = predict(songsLog3, newdata = songsTest, type = "response")
 table(songsTest$Top10, songsPredic >= 0.45)
-# accuracy of results show taht 87.8% prediction of song being in the top 10 charts
+# accuracy of results show that 87.8% prediction of song being in the top 10 charts
 # compared this to the baseline, we see that the accuracy is 84% (so a slight improvement)
 table(songsTest$Top10)
 # Sensitivity (true positive) = 0.32 i.e. 32% of the actual popsitive (in top 10) outcomes were accurately predicted
 # Specifity (true negative) = 0.98 i.e. 98% of the actual negative (no top 10) outcomes were accurately predicted
+
+*********************************
+# Parole violators
+parole = read.csv("parole.csv")
+
+# We observe that there are unordered factors (or categories) in the data set e.g. male, race, state, violator and crime
+# only state and crime have more than 3 levels
+parole$state = as.factor(parole$state)
+parole$crime = as.factor(parole$crime)
+
+# Split parole data into Train and Test sets, set seed to 144 and higher splitratio given smaller data set size
+set.seed(144)
+split = sample.split(parole$violator, SplitRatio = 0.7)
+paroleTrain = subset(parole, split == T )
+paroleTest = subset(parole, split == F)
+
+# Build first logit model using violator as dependent variable and all others as independent
+paroleLog1 = glm(violator ~ ., data = paroleTrain, family = binomial)
+# results show that the variable multiple.offenses has a positive and larger coeff. than other significant variables
+# this indicates that the probability of an offender breaking parole increases by log coeff. for every unit increase in the variable
+
+# Make a prediction using this logit model on the test data set
+predicParole = predict(paroleLog1, newdata = paroleTest, type = "response")
+table(paroleTest$violator, predicParole >= 0.5)
+# Sensitivity equals 12 / (12 + 11) or 0.521
+# Specificity equals 167 / (167 + 12) or 0.932
+# Accuracy of the models' predictions equals 167 + 12 / 202 = 0.88
+table(paroleTest$violator)
+# accuracy of the baseline in predicting parole violation is equal to 0.886
+# it has 0 false positives and 23 false negatives
+
+# Calculate the area under the chart
+ROCRpredic = prediction(predicParole, paroleTest$violator)
+auc = as.numeric(performance(ROCRpredic, "auc")@y.values)
+ROCperf = performance(ROCRpredic, 'tpr', 'fpr') 
+plot(ROCperf, colorize= T, print.cutoffs.at = seq(0,1,0.1), text.adj = c(-0.2,1.7))
+# AuC = 0.89 which means there is a 89% probability the model can correctly differentiate between a
+# randomly selected parole violator and a randomly selected parole non-violator.
