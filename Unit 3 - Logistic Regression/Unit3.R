@@ -221,3 +221,78 @@ ROCperf = performance(ROCRpredic, 'tpr', 'fpr')
 plot(ROCperf, colorize= T, print.cutoffs.at = seq(0,1,0.1), text.adj = c(-0.2,1.7))
 # AuC = 0.89 which means there is a 89% probability the model can correctly differentiate between a
 # randomly selected parole violator and a randomly selected parole non-violator.
+
+******************************************
+# Predicting loan repayments
+loans = read.csv("loans.csv")
+# Check to see how many of the loans have missing values 
+missing = subset(loans, is.na(log.annual.inc) | is.na(days.with.cr.line) | is.na(revol.util) | is.na(inq.last.6mths) | is.na(delinq.2yrs) | is.na(pub.rec))
+# Total of 62 loans have at least one variable with a missing value
+# Instead of removing these variables, we need to fill in the missing values before proceeding with creating a logistic regression model
+
+# Create subset of the variables that have missing values
+loans.missing = loans[, "log.annual.inc", ]
+set.seed(144)
+# Use multiple imputation to impute missing values for all independent variables except not.fully.paid
+vars.for.imputation = setdiff(names(loans), "not.fully.paid")
+imputed = complete(mice(loans[vars.for.imputation]))
+# Re-add the variables that have been imputed into a new data set
+loans[vars.for.imputation] = imputed
+
+# Split data into Train and Test sets using sample.split function on the dep. var. (not.fully.paid)
+set.seed(144)
+split = sample.split(loans$not.fully.paid, SplitRatio = 0.7)
+loansTrain = subset(loans, split == T )
+loansTest = subset(loans, split == F)
+
+# Build logit model using all independent variables and the dependent variable as per split
+loansLog1 = glm(not.fully.paid ~ ., data = loansTrain, family = binomial)
+# results show that loan purpose coeff. that are negative lead to lower probability of loan default e.g. education and home improvement
+# whilst positive coeff. lead to greater risk of defaulting on the loan
+
+# Predict the probability of loan default using the logit model on the test data
+loansTest$predicLoans = predict(loansLog1, newdata = loansTest, type = "response")
+table(loansTest$not.fully.paid, loansTest$predicLoans > 0.5)
+
+# Calculate AUC 
+ROCRpredic = prediction(loansTest$predicLoans, loansTest$not.fully.paid)
+auc = as.numeric(performance(ROCRpredic, "auc")@y.values)
+ROCperf = performance(ROCRpredic, 'tpr', 'fpr') 
+plot(ROCperf, colorize= T, print.cutoffs.at = seq(0,1,0.1), text.adj = c(-0.2,1.7))
+# AUC equals 0.672 i.e. there is a 67.2% probability that the logit model can differentiate between a randomlly
+# selected loan defaulter and randomly selected non-loan defaulter
+
+# Develop a bivariate logistic regression model using just the int.rate variable as the independent 
+bivariateLog = glm(not.fully.paid ~ int.rate, data = loansTrain, family = "binomial")
+
+# Conduct prediction using this bivariate logit model on the test data
+bivariatePredic = predict(bivariateLog, newdata = loansTest, type = "response")
+summary(bivariatePredic)
+# results using bivariate logit model shows that the highest predicted probability of a 
+# loan not being paid back is 0.426. This is less than the 0.5 threshold value. 
+
+# Calculate AUC on this new bivariate model
+ROCRpredic = prediction(bivariatePredic, loansTest$not.fully.paid)
+auc = as.numeric(performance(ROCRpredic, "auc")@y.values)
+# results show AUC is equal to 0.6239081 or 62.4%. 
+
+# Compute the probability of a profitable investment in a loan
+# use the formula c * exp(r * t) where c is initial investoment (assume $1), r is interst rate and t is term of loan (3yrs for all loans in this data set)
+# Create a new variable from the test data that shows the profit (when load is repayed) and loss (default of loan)
+loansTest$Profit = 1*exp(loansTest$int.rate * 3) - 1
+loansTest$Profit[loansTest$not.fully.paid == 1] = -1 # value of 1 means loan was not paid
+
+# Apply an investment strategy that seeks to maximise returns whilst minimising risk of loan default
+# Required return is set at a minimum of r = 15%, and the aim is to minimise risk for any 100 loans chosen
+# First, subset the test data frame to include only those loans with the required interest rate
+highInterest = subset(loansTest, loansTest$int.rate >= 0.15)
+# Average return for setting a minimum hurdle rate of 15% int.rate equals 0.2251 dollars per $1 invested
+# this is an improvemnt over the total test set which was 0.2094 dollars per $1 invested
+# However, this is offest by the fact there is a high proportion of loans not paid back of 25.17% vs 16% from all loans in test set
+
+# Find the 100th smallest predicted probability of loan default in this highinterest set, using predicLoans created earlier
+cutoff = sort(highInterest$predicLoans, decreasing = F)[100]
+
+# Now create a new subset that includes only the 100 loans that are equal to or belowo this predicted default probability
+selectedLoans = subset(highInterest, highInterest$predicLoans <= cutoff)
+# results show that average profit is now 0.318 dollars per $1 invested, with a 19% predicted probability of a loan default (slighlty higher than all loans but lower than just focusing on r>15%)
