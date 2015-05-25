@@ -1,0 +1,78 @@
+# US Supreme Court Stevens data from 1994 to 2001 
+stevens = read.csv("stevens.csv")
+# Dependent variable is Reverse, where = 1 reverse decision and 0 = affirm
+# Split data into Training and Testing set
+set.seed(3000)
+split = sample.split(stevens$Reverse, SplitRatio = 0.7 )
+stevensTrain = subset(stevens, split == T)
+stevensTest = subset(stevens, split == F)
+# Create CART (Classification and regression tree)
+stevensTree = rpart(Reverse ~ Circuit + Issue + Petitioner + Respondent + LowerCourt + Unconst,
+                    data = stevensTrain, method = "class", minbucket = 25) 
+# Use prp function within the rpart package to build decision tree
+install.packages("rpart.plot")
+prp(stevensTree)
+
+# Make predictions of reversal probability using the test data and the created CART
+stevensPredic = predict(stevensTree, newdata = stevensTest, type = "class")
+table(stevensTest$Reverse, stevensPredic)
+# Accuracy equals 41 + 71 / 170 or .659 (compared with baseline of 0.55)
+
+# Create ROC chart for the CART model without the class type as before
+ROCpredic = predict(stevensTree, newdata = stevensTest)
+# Use the 2nd column (reversal = 1) in the prediction function
+stevensPredic2 = prediction(ROCpredic[,2], stevensTest$Reverse)
+stevensPerf = performance(stevensPredic2, "tpr", "fpr")
+plot(stevensPerf, colorize= T, print.cutoffs.at = seq(0,1,0.1), text.adj = c(-0.2,1.7))
+# AUC equals 0.693
+auc = as.numeric(performance(stevensPredic2, "auc")@y.values)
+
+# How many branches are there when minbucket is changed from 25 to 5?
+stevensTree5 = rpart(Reverse ~ Circuit + Issue + Petitioner + Respondent + LowerCourt + Unconst,
+                    data = stevensTrain, method = "class", minbucket = 5) 
+prp(stevensTree5)
+
+# Minbucket changed to 100
+stevensTree100 = rpart(Reverse ~ Circuit + Issue + Petitioner + Respondent + LowerCourt + Unconst,
+                    data = stevensTrain, method = "class", minbucket = 100) 
+prp(stevensTree100)
+
+# minbucket of 5 produces 16 branches, this is too high and suggests overfit to the training data set
+# minbucket of 100 produces only a single branch, the tree does not fit well to do training data
+
+# Generate a Random Forrest model
+stevensForest = randomForest(Reverse ~ Circuit + Issue + Petitioner + Respondent + LowerCourt+
+                               Unconst, data = stevensTrain, nodesize = 25, ntree = 100)
+# Warning message will ask if you are sure you want to run classification using randomForest, since there is no type "class" as there was for CART model
+# In order to run classification using randomForest, the dependent variable needs to be turned into factors in both Train and Test data set
+stevensTest$Reverse = as.factor(stevensTest$Reverse)
+stevensTrain$Reverse = as.factor(stevensTrain$Reverse)
+# Compute predictiosn on the forrest model
+forestPredic = predict(stevensForest, newdata = stevensTest)
+table(stevensTest$Reverse, forestPredic)
+# The accuracy will vary given the random nature, but should be higher than that using CART and logistic regression e.g approx. 0.68
+
+# Install carat and e1071 packages to perform cross-validation
+install.packages("caret")
+install.packages("e1071")
+
+# Take the whole training set data and split it up into k equally sized subsets or 'folds', then make predictions
+# for each k - 1 subset, continuing building models for each different subset with different fold combinations.
+# This is known as k-fold Cross-Validation
+# First, define number of folds
+numFolds = trainControl(method = "cv", number = 10) # cv = cross validation
+# Pick the possible values for the cp (complexity parameter) values to test i.e. 5 vaues from 0.01 to 0.05
+cpGrid = expand.grid(.cp=seq(0.1, 0.5, 0.01))
+# Perform cross validation with our CART model
+train(Reverse ~ Circuit + Issue + Petitioner + Respondent + LowerCourt + Unconst,
+        data = stevensTrain, method = "rpart", trControl = numFolds, tuneGrid = cpGrid)
+# Final value used for the model was cp = 0.18, this is the cp value to use in the CART model
+# Therefore, create a new CART model instead of the minbucket value of 25 used earlier
+stevensTreeCV = rpart(Reverse ~ Circuit + Issue + Petitioner + Respondent + LowerCourt + Unconst,
+                      data = stevensTrain, method = "class", cp = .18) 
+cvPredic = predict(stevensTreeCV, newdata = stevensTest, type = "class")
+table(stevensTest$Reverse, cvPredic)
+# THe new accuracy of the CART model is now 0.723, an increase over the previous accuracy of the CART model of 0.659.
+# Plot the tree for this new cross validatino CART model and note the number of branches
+prp(stevensTreeCV)
+# This tree has one split and gives us the best out-of-sample accuracy. This reminds us that sometimes the simplest models are the best!
