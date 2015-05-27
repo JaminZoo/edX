@@ -76,3 +76,33 @@ table(stevensTest$Reverse, cvPredic)
 # Plot the tree for this new cross validatino CART model and note the number of branches
 prp(stevensTreeCV)
 # This tree has one split and gives us the best out-of-sample accuracy. This reminds us that sometimes the simplest models are the best!
+
+********************************
+# D2Hawkeye
+claims = read.csv("ClaimsData.csv")
+# 5 total cost 'buckets' which denote the amount claimed by each person in that year
+# Calculate the percentage of patients in each bucket to determine which bucket has largest proportion of claims
+table(claims$bucket2009) / nrow(claims) * 100
+# We see that bucket one has the largest proportion of claims at 67% and bucket 5 the least at 0.57%
+# Goal is to predict the cost bucket a patient will fall into in 2009 (using 2008 as Training data set)
+
+# First, split the data into Training and Testing sets with a split ration of 0.6 in Train
+set.seed(88)
+split = sample.split(claims$bucket2009, SplitRatio = 0.6)
+claimsTrain = subset(claims, split == T)
+claimsTest = subset(claims, split == F)
+
+# Determine the accuracy of the baseline model using the actual (2009) and predicted (2008) values
+classMatrix = table(claimsTest$bucket2009, claimsTest$bucket2008) #this is our classification or confusion matrix
+accu = (110138 + 10721 + 2774 + 1539 + 103) / nrow(claimsTest)
+# By summing the diagonal results and dividing by total clais in the testing set, we get an accuracy of 68%
+# We also need to determine the penalty error, which can be done by creating a penalty matrix, multiplying this by the confusion matrix and dividing by the rows in the test set
+penaltyMatrix = matrix(c(0,1,2,3,4,2,0,1,2,3,4,2,0,1,2,6,4,2,0,1,8,6,4,2,0), byrow = T, nrow = 5)
+# Predictions are the columns and actual outcomes the rows
+# multiple classification and penalty matrices together
+as.matrix(table(claimsTest$bucket2009, claimsTest$bucket2008)) * penaltyMatrix 
+sum(as.matrix(table(claimsTest$bucket2009, claimsTest$bucket2008)) * penaltyMatrix 
+) / nrow(claimsTest)
+# Penalty error for the baseline error is therefore 0.73
+
+# Objective is to product a CART model that has accuracy greater than 0.68 and penalty error less than 0.73 of the baseline
