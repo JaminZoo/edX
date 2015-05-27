@@ -95,7 +95,7 @@ claimsTest = subset(claims, split == F)
 # Determine the accuracy of the baseline model using the actual (2009) and predicted (2008) values
 classMatrix = table(claimsTest$bucket2009, claimsTest$bucket2008) #this is our classification or confusion matrix
 accu = (110138 + 10721 + 2774 + 1539 + 103) / nrow(claimsTest)
-# By summing the diagonal results and dividing by total clais in the testing set, we get an accuracy of 68%
+# By summing the diagonal results and dividing by total claims in the testing set, we get an accuracy of 68%
 # We also need to determine the penalty error, which can be done by creating a penalty matrix, multiplying this by the confusion matrix and dividing by the rows in the test set
 penaltyMatrix = matrix(c(0,1,2,3,4,2,0,1,2,3,4,2,0,1,2,6,4,2,0,1,8,6,4,2,0), byrow = T, nrow = 5)
 # Predictions are the columns and actual outcomes the rows
@@ -106,3 +106,31 @@ sum(as.matrix(table(claimsTest$bucket2009, claimsTest$bucket2008)) * penaltyMatr
 # Penalty error for the baseline error is therefore 0.73
 
 # Objective is to product a CART model that has accuracy greater than 0.68 and penalty error less than 0.73 of the baseline
+# First build the tree using rpart and prp functions. Note that we use the same method as binary (LM and Logit) for this 5 level classification matrix
+claimsTree1 = rpart(bucket2009 ~ age + alzheimers + arthritis + cancer + copd + depression +
+                   diabetes + heart.failure + ihd + kidney + osteoporosis + stroke +
+                   reimbursement2008 + bucket2008, data = claimsTrain, method = "class", cp = 0.00005)
+prp(claimsTree)
+# Compute the predictions for the tree model
+claimsPredic1 = predict(claimsTree, newdata = claimsTest, type = "class")
+table(claimsTest$bucket2009, claimsPredic)
+accuTree1 = (114141 + 16102 + 118 + 201 + 0) / nrow(claimsTest)
+# Accuracy is 0.71 (greater than 0.68 of baseline model)
+sum(as.matrix(table(claimsTest$bucket2009, claimsPredic)) * penaltyMatrix 
+) / nrow(claimsTest)
+# Penalty error for CART model is 0.758 (greater than 0.73 of baseline model i.e. not what we want)
+
+# By default rpart will try to maximise the accuracy and every type of error as seeing as having a penalty of 1. CART model sees very few 3, 4 and 5 values. 
+# Rebuild CART model using the loss function and the penalty matrix
+claimsTree2 = rpart(bucket2009 ~ age + alzheimers + arthritis + cancer + copd + depression +
+                     diabetes + heart.failure + ihd + kidney + osteoporosis + stroke +
+                     reimbursement2008 + bucket2008, data = claimsTrain, method = "class", cp = 0.00005, parms = list(loss=penaltyMatrix))
+claimsPredic2 = predict(claimsTree2, newdata = claimsTest, type = "class")
+table(claimsTest$bucket2009, claimsPredic2)
+accuTree2 = (94310 + 18942 + 4692 + 636 + 2) / nrow(claimsTest)
+# Accuracy is equal to 0.647 (lower than baseline and first CART model)
+sum(as.matrix(table(claimsTest$bucket2009, claimsPredic2)) * penaltyMatrix 
+) / nrow(claimsTest)
+# Penalty error is now 0.642 (less than baseline and first CART model)
+
+*********************************
