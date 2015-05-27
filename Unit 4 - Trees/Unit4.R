@@ -110,9 +110,9 @@ sum(as.matrix(table(claimsTest$bucket2009, claimsTest$bucket2008)) * penaltyMatr
 claimsTree1 = rpart(bucket2009 ~ age + alzheimers + arthritis + cancer + copd + depression +
                    diabetes + heart.failure + ihd + kidney + osteoporosis + stroke +
                    reimbursement2008 + bucket2008, data = claimsTrain, method = "class", cp = 0.00005)
-prp(claimsTree)
+prp(claimsTree1)
 # Compute the predictions for the tree model
-claimsPredic1 = predict(claimsTree, newdata = claimsTest, type = "class")
+claimsPredic1 = predict(claimsTree1, newdata = claimsTest, type = "class")
 table(claimsTest$bucket2009, claimsPredic)
 accuTree1 = (114141 + 16102 + 118 + 201 + 0) / nrow(claimsTest)
 # Accuracy is 0.71 (greater than 0.68 of baseline model)
@@ -134,3 +134,72 @@ sum(as.matrix(table(claimsTest$bucket2009, claimsPredic2)) * penaltyMatrix
 # Penalty error is now 0.642 (less than baseline and first CART model)
 
 *********************************
+# Boston house prices, where dependent or outcome variable is medium value (in '000) or MEDV
+boston = read.csv("boston.csv")
+# Plot of TRACT, NOX and CHAS
+ggplot(aes(x = LON, y = LAT), data = subset(boston, TRACT == 3531)) +
+  geom_point(color = "red", size = 5) + 
+  geom_jitter(aes(LON,LAT, color = CHAS), alpha = 0.5, data = boston) + 
+  geom_point(aes(LON, LAT), color = "green",data = subset(boston,NOX >=0.55))
+
+# Build a regression tree
+bostonTree = rpart(MEDV ~ LAT + LON, data = boston)
+prp(bostonTree)
+# Make predictions on CART model
+bostonPredic = predict(bostonTree) 
+# Plot results of prediction along with subset of data with MEDV greater than or equal to 21.2
+ggplot(aes(x = LON, y = LAT), data = boston) +
+  geom_point(shape = 1) + 
+  geom_point(aes(LON, LAT), color = "red",data = subset(boston,MEDV >=21.2)) +
+  geom_point(shape = bostonPredic, color = "blue")
+
+# Build a new tree with minbucket size equal to 50. 
+bostonTree2 = rpart(MEDV ~ LAT + LON, data = boston, minbucket = 50)
+prp(bostonTree2)
+# Again plot the results and segment by following the tree branches towards the lowest MEDV
+ggplot(aes(x = LON, y = LAT), data = boston) +
+  geom_point(shape = 1) + 
+  geom_point(aes(LON, LAT), color = "red",data = subset(boston,MEDV >=21.2)) +
+  geom_hline(aes(yintercept = 42.21)) +
+  geom_hline(aes(yintercept = 42.17)) + 
+  geom_vline(aes(xintercept = -71.07))
+# The new regression tree model has 'carved' out a rectangle that predicts closely what the MEDV is for the main data set
+# Re-run prediction on CART model
+set.seed(123)
+split = sample.split(boston$MEDV, SplitRatio = 0.7)
+bostonTrain = subset(boston, split == T)
+bostonTest = subset(boston, split == F)
+# Build linear regression model 
+bostonLinear = lm(MEDV ~ LON + LAT + CRIM + ZN + INDUS +
+                    CHAS + NOX + RM + AGE + DIS + RAD + TAX + PTRATIO,
+                  data = bostonTrain) # choose all variables except TOWN as independent variables
+# Adjusted R squared is 0.65, there could be codependency 
+bostonPredic2 = predict(bostonLinear, newdata = bostonTest)
+# Calculated sum of square error for this Linear regression model
+bostonSSE = sum((bostonPredic2 - bostonTest$MEDV)^2)
+# SSE equals 3037, determine if regression tree can improve on this error vaule
+# Create another regression tree, now with all the variables instead of just LAT and LON
+bostonTree3 = rpart(MEDV ~  LON + LAT + CRIM + ZN + INDUS +
+                      CHAS + NOX + RM + AGE + DIS + RAD + TAX + PTRATIO,
+                    data = bostonTrain) 
+prp(bostonTree3)
+# Make predictions of this tree
+bostonPredic3 = predict(bostonTree3, newdata = bostonTest)
+treeSSE = sum((bostonPredic3 - bostonTest$MEDV)^2)
+# SSE using regression tree gives us a value of 4328, meaning linear regression is better than regression tree in this instance
+
+# Use cross validation to build final regression tree
+numFolds = trainControl(method = "cv", number = 10)
+cpGrid = expand.grid(.cp= (0:10)* 0.001) # caret function will try all values given in grid e.g. 10 values starting from 0 and incrementing by 0.001
+# Now fit the predictive model over different tuning parameters
+bostonTree4 = train(MEDV ~  LON + LAT + CRIM + ZN + INDUS +
+                      CHAS + NOX + RM + AGE + DIS + RAD + TAX + PTRATIO,
+                    data = bostonTrain, method = "rpart", trControl = numFolds, tuneGrid = cpGrid) 
+# Running bostonTree4 gives a summary of results from sampling each parameter and provides the final value for cp = 0.001
+bestTree = bostonTree4$finalModel # get the best tree
+prp(bestTree) # plot the tree corresponding to this model, shows very detailed tree as per the small cp value.
+# Finally compute the SSE for this best tree model
+bestTreePredic = predict(bestTree, newdata = bostonTest)
+bestTreeSSE = sum((bestTreePredic - bostonTest$MEDV)^2)
+# SSE equals 3675. Using cross validation improved on the SSE of the regression tree, but not as low as the SSE from linear regression (3037)
+
