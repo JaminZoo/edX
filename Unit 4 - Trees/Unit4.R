@@ -190,7 +190,7 @@ treeSSE = sum((bostonPredic3 - bostonTest$MEDV)^2)
 
 # Use cross validation to build final regression tree
 numFolds = trainControl(method = "cv", number = 10)
-cpGrid = expand.grid(.cp= (0:10)* 0.001) # caret function will try all values given in grid e.g. 10 values starting from 0 and incrementing by 0.001
+cpGrid = expand.grid(.cp=seq(0,0.01, 0.001)) # caret function will try all values given in grid e.g. 10 values starting from 0 and incrementing by 0.001
 # Now fit the predictive model over different tuning parameters
 bostonTree4 = train(MEDV ~  LON + LAT + CRIM + ZN + INDUS +
                       CHAS + NOX + RM + AGE + DIS + RAD + TAX + PTRATIO,
@@ -203,3 +203,63 @@ bestTreePredic = predict(bestTree, newdata = bostonTest)
 bestTreeSSE = sum((bestTreePredic - bostonTest$MEDV)^2)
 # SSE equals 3675. Using cross validation improved on the SSE of the regression tree, but not as low as the SSE from linear regression (3037)
 
+*********************************
+# Understanding why people vote in elections using both logistic regression and classification trees
+# Dependent variable (outcome) is Voting i.e. 1 if they voted, 0 if they didn't. 
+# Data is segmented into 5 groups, a base/control and 4 others based on specific observations  
+gerber = read.csv("gerber.csv")
+
+# Largest proportion of groups that voted is the neighbors group.
+tapply(gerber$voting, gerber$neighbor, mean)
+
+# Build a logistic regression model first
+logit1 = glm(voting ~ hawthorne + civicduty + neighbors + self, data = gerber, 
+             family = binomial)
+# Using a threshold value of t = 0.3, predict the accuracy of the logistic regression model (don't need to use the newdata argument as the data was not split)
+logitPredic1 = predict(logit1, type = "response")
+table(gerber$voting, logitPredic1 > 0.5)
+# Accuracy equals sum of all true positive and true negatives and dividing by total obsevations
+# With threshold value of 0.3, accuracy is 0.542 and at 0.5 accuracy is 0.684
+ROCRpredic = prediction(logitPredic1, gerber$voting)
+# Calculate the Area under chart 
+auc = as.numeric(performance(ROCRpredic, "auc")@y.values)
+# AUC equals 0.53 which is low, indicating that our logit model is not very good at predicting whether someone will vote over the baseline.
+
+# Now build a CART tree using the same 4 independent variables and excluding method = 'class'
+cartModel1 = rpart(voting ~ hawthorne + civicduty + neighbors + self, data = gerber)
+prp(cartModel1)
+# The tree only produces one leaf, as none of the variables make a big enough difference to be split into branches.
+# Rebuild another CART model this time using a complexity parameter equal to 0.0 and force the complete tree to be build
+cartModel2 = rpart(voting ~ hawthorne + civicduty + neighbors + self, data = gerber, cp = 0.0) 
+prp(cartModel2 ) # Neighbors have highest liklihood to vote, whilst civicduty group lowest at 0.31
+# Add the sex variable into a new CART model 
+cartModel3 =  rpart(voting ~ sex + hawthorne + civicduty + neighbors + self, data = gerber, cp = 0.0)
+prp(cartModel3)
+
+# Create two regression trees, one with just the control group as the independent variable,
+# and the other with both control and sex, all with cp = 0.0
+cartModel4 =  rpart(voting ~ control, data = gerber, cp = 0.0)
+prp(cartModel4, digit = 6)
+# Tree shows that if control = 1, predicted voting is equal to 0.296 whilst if control = 0 it is 0.34
+cartModel5 =  rpart(voting ~ control + sex, data = gerber, cp = 0.0)
+prp(cartModel5, digit = 6)
+
+# Try comparing using just the control and sex variable in a logistic regression model
+logit2 = glm(voting ~ control + sex, data = gerber, family = binomial)
+# sex coeff. is negative and suggest women are less likely to vote 
+
+# Create a new data frame that includes only the control and sex variables in order to improve on the earlier logistic regressnion model
+Possibilities = data.frame(sex=c(0,0,1,1),control=c(0,1,0,1))
+logitPredic2 = predict(logit2, newdata = Possibilities, type = 'response')
+# Absolute difference between the Women and Control case can be deterrmined by subtracting the results
+# from the regression tree model and the logistic regression model just created. 0.290456 - 0.29086 = 0.0003
+# This shows that there is very little difference between the logistic regression and tree models for this data set.
+
+# Continue using the logistic regression model, but this time add new variable that combines both control and sex i.e. if this variable is 1, the voter is both female and in the control group
+logit3 = glm(voting ~ control + sex + sex:control, data = gerber, family = 'binomial')
+# the coeff. of this combined variable is negative, indicating that a value of 1 (Women AND Control) would lower the chances of someone voting. 
+logitPredic3 = predict(logit3, newdata = Possibilities, type = 'response')
+# New difference between CART and this logistic regression model is 0.290456 - 0.2904558 = essentially 0!
+
+# Conclusion: using combined variables, a logistic regression model can closely model non-linear relationships compared with a CART model
+# However, we should not use all combination variables as this will lead to over fitting of data. If we had a combination variable for each of the 4 groups and the 2 sexes, this would double the number of variables. 
