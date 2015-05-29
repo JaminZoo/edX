@@ -325,3 +325,51 @@ accuForest2 = (364 + 393 + 380 + 390) / nrow(lettersTest) # accuracy using rando
 # This random forest has been created assuming default nodesize and ntree values
 # Whilst the accuracy of the CART model decreased from 0.924 to 0.878 going from a single letter (B) to all letter prediction, 
 # using a random forest sees very small decrease in accuracy going from the same single to many case variable problem (0.988 to only 0.980)
+
+**************************************
+  census = read.csv("census.csv")
+set.seed(2000)
+split = sample.split(census$over50k, SplitRatio = 0.6)
+censusTrain = subset(census, split == T)
+censusTest = subset(census, split == F)
+
+censusLogit = glm(over50k ~ ., data = censusTrain, family = "binomial")
+summary(censusLogit)
+table(censusTest$over50k) # 0.855 logistic regression and 0.759 baseline
+censusPredic1 = predict(censusLogit, newdata = censusTest, type = "response")
+table(censusTest$over50k, censusPredic1 >= 0.5) 
+ROCRpredict = prediction(censusPredic1, censusTest$over50k)
+auc = as.numeric(performance(ROCRpredict, "auc")@y.values) # 0.906
+
+censusCART = rpart(over50k ~., data = censusTrain, method = "class")
+prp(censusCART)
+censusPredic2 = predict(censusCART, newdata = censusTest, type = "class")
+table(censusTest$over50k, censusPredic2) #0.847
+
+censusPredic3 = predict(censusCART, newdata = censusTest)
+ROCRpredic2 = prediction(censusPredic3[,2], censusTest$over50k)
+auc = as.numeric(performance(ROCRpredic2, "auc")@y.values) # 0.847
+ROCperf = performance(ROCRpredic2, 'tpr', 'fpr') 
+plot(ROCperf, colorize= T, print.cutoffs.at = seq(0,1,0.1), text.adj = c(-0.2,1.7))
+
+set.seed(1)
+censusSmall = censusTrain[sample(nrow(censusTrain), 2000),] # 2000 rows and all columns from census training set
+set.seed(1)
+censusForest = randomForest(over50k ~ ., data = censusSmall)
+censusPredic4 = predict(censusForest, newdata = censusTest)
+table(censusTest$over50k, censusPredic4) # 0.834
+
+vu = varUsed(censusForest, count = T)
+vusorted = sort(vu, decreasing = FALSE, index.return = TRUE)
+dotchart(vusorted$x, names(censusForest$forest$xlevels[vusorted$ix]))
+varImpPlot(censusForest)
+
+numFolds = trainControl(method = "cv", number = 10)
+cpGrid = expand.grid(.cp=seq(0.002,0.1, 0.002)) # caret function will try all values given in grid e.g. 10 values starting from 0 and incrementing by 0.001
+# Now fit the predictive model over different tuning parameters
+censusCART2 = train(over50k ~ ., data = censusTrain, method = "rpart", trControl = numFolds, tuneGrid = cpGrid) 
+
+censusCART3 = rpart(over50k ~ ., data = censusTrain, cp = '0.002')
+censusPredic5 = predict(censusCART3, newdata = censusTest, type = 'class')
+table(censusTest$over50k, censusPredic5) # 0.861
+prp(censusCART3)
