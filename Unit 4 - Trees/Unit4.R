@@ -263,3 +263,65 @@ logitPredic3 = predict(logit3, newdata = Possibilities, type = 'response')
 
 # Conclusion: using combined variables, a logistic regression model can closely model non-linear relationships compared with a CART model
 # However, we should not use all combination variables as this will lead to over fitting of data. If we had a combination variable for each of the 4 groups and the 2 sexes, this would double the number of variables. 
+
+*********************************
+#Letter recognition - a multiclass classification problem (compared with prervious binary classification problems)
+
+letters = read.csv("letters_ABPR.csv")
+
+# First, focus on just the letter B. Assign a variable isB to all observations that are true for B and false for not B i.e. all other letters
+letters$isB = as.factor(letters$letter == "B")
+# Now split the dataset into Training and Testing set, placing 50% of the data in each. 
+set.seed(1000)
+split = sample.split(letters$isB, SplitRatio = 0.5)
+lettersTrain = subset(letters, split == T)
+lettersTest = subset(letters, split == F)
+# Determine the baseline accuracy using the test set. 
+table(lettersTest$isB)
+# 1175 observed to be not B and 383 as the letter B, giving accuracy equal to 0.754
+
+# Build a classification model to predict single letter (B)
+lettersCART = rpart(isB ~ . - letter, data = lettersTrain)
+CARTPredic = predict(lettersCART, newdata = lettersTest, type='class')
+table(lettersTest$isB, CARTPredic)
+# accuracy equals 301 + 1137 / 1556 = 0.924
+# Now build a random forest model to predict whether the letter is a B i.e. isB variable
+lettersForest = randomForest(isB ~ . - letter, data = lettersTrain)
+prp(lettersForest)
+lettersPredic1 = predict(lettersForest, newdata = lettersTest)
+table(lettersTest$isB, lettersPredic1)
+accuForest = (375 + 1165) / nrow(lettersTest)
+# Accuracy equals 0.988 using random foreset model
+
+# Now focus on predicting all letters in the data set (A, B, P and R)
+# To predict each of the four letters, we must first convert the letter variable into a factor of 4 levels (one for each letter)
+letters$letter = as.factor(letters$letter)
+ 
+# We now need to split the original data set into Train and Test sets as we are now interested in all 4 letters
+set.seed(2000)
+split = sample.split(letters$letter, SplitRatio = 0.5)
+lettersTrain = subset(letters, split == T)
+lettersTest = subset(letters, split == F)
+
+# Determine the baseline accuracy using the test set. 
+table(lettersTrain$letter) # shows most common letter is P at 402 occurences
+table(lettersTest$letter) # shows P is most common letter at 401
+401 / nrow(lettersTest) # accuracy of test set for most common letter (P) is 0.257
+
+# Build classification tree using the training set
+lettersCART1 = rpart(letter ~ . - isB, data = lettersTrain, method = "class")
+prp(lettersCART1)
+lettersPredic2 = predict(lettersCART1, newdata = lettersTest, type = 'class')
+table(lettersTest$letter, lettersPredic2)
+accuCART1 = (340 + 363 +318 + 348)/ nrow(lettersTest) # accuracy of CART model in predicting each letter is 0.878
+
+# Now build a random forest model for all 4 letters
+set.seed(1000)
+lettersForest2 = randomForest(letter ~ . -isB,data = lettersTrain)
+lettersPredic3 = predict(lettersForest2, newdata = lettersTest)
+table(lettersTest$letter, lettersPredic3)
+accuForest2 = (364 + 393 + 380 + 390) / nrow(lettersTest) # accuracy using randomForest is now 0.98!
+# This shows the large improvements that are possible in prediction accuracy (0.98 vs. 0.878) when using random forest compared with a classification tree model.
+# This random forest has been created assuming default nodesize and ntree values
+# Whilst the accuracy of the CART model decreased from 0.924 to 0.878 going from a single letter (B) to all letter prediction, 
+# using a random forest sees very small decrease in accuracy going from the same single to many case variable problem (0.988 to only 0.980)
