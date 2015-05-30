@@ -83,3 +83,6 @@ tweetLogit = glm(Negative ~ ., data = trainSparse, family = "binomial")
 predicLogit = predict(tweetLogit, newdata = testSparse, type = "response")
 table(testSparse$Negative, predicLogit > 0.5)
 # Accuracy is equal to 32 + 253 / (23 + 32 + 47 +253) = 0.80, which is worse than both the CART and random tree models as well as the baseline
+
+**************************************
+  
