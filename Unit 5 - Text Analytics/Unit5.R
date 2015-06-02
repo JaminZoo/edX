@@ -85,4 +85,63 @@ table(testSparse$Negative, predicLogit > 0.5)
 # Accuracy is equal to 32 + 253 / (23 + 32 + 47 +253) = 0.80, which is worse than both the CART and random tree models as well as the baseline
 
 **************************************
-  
+# Enron text analytics court case
+  emails = read.csv("energy_bids.csv", stringsAsFactors = F)
+
+# First, create a corpus from the emails data set
+corpus = Corpus(VectorSource(emails$email)) 
+
+# Perform 4 pre-processing steps to prepare text for analysis. 
+# 1. Use the tm_map function to pass in the corpus and a function to appy to all words in the corpus
+corpus = tm_map(corpus, tolower)
+corpus = tm_map(corpus, PlainTextDocument)
+
+# 2. Remove punctuation
+corpus = tm_map(corpus, removePunctuation)
+
+# 3. Remove stop words
+corpus = tm_map(corpus, removeWords, stopwords("english"))
+
+# 4. Remove the stem or ending section of each word basedon Porter's stemming algo
+corpus = tm_map(corpus, stemDocument)
+
+strwrap(corpus[[1]])
+
+# View the matrix of this corpus
+dtm = DocumentTermMatrix(corpus)
+# Total of 22167 words in the 855 individual emails, with very high sparsity (99%)
+
+# Therfore, we can exclude these the non sigfnicant words by using the removeSparseTerms function and a max allowed sparsity of 0.995 i.e. only keep 0.5% of total tweets in our corpus
+sparse = removeSparseTerms(dtm, 0.97) 
+
+# Create new data frame to incorporate this reduced corpus, with each column representing the 788 different words and the same number of rows as emails (855)
+emailsSparse = as.data.frame(as.matrix(sparse))
+
+# Lastly, add in the responsive variable from the original emails data frame that tells us whether the email contents had sensitive words
+emailsSparse$responsive = emails$responsive
+
+# Now begin to build the predictive model by splitting the sparse data frame into Training and Testing sets
+set.seed(144)
+split = sample.split(emailsSparse$responsive, SplitRatio = 0.7)
+trainSparse = subset(emailsSparse, split == T)
+testSparse = subset(emailsSparse, split == F)
+
+# First, build CART model 
+emailsCART = rpart(responsive ~ ., data = trainSparse, method = "class")
+prp(emailsCART)
+# Make predictions based on the CART model
+predic = predict(emailsCART, newdata = testSparse)
+predic[1:10,] # display first 10 rows of the prediction, first col shows words that are not responsive and the 2nd row those that are responsive
+predic.prob = predic[,2]
+table(testSparse$responsive, predic.prob >= 0.5)
+# Accuracy of CART model at predicting email responsive or not equal to 25 +195 / (195 + 25 + 17 + 20) = 0.856
+table(testSparse$responsive)
+# Accuracy of baseline is 215 / 267 = 0.837 showing a small improvment in using CART model for the accuracy
+
+# Plot ROC curve
+predicROCR = prediction(predic.prob, testSparse$responsive)
+perfROCR = performance(predicROCR, 'tpr', 'fpr')
+auc = as.numeric(performance(predicROCR, "auc")@y.values)
+plot(perfROCR, colorize = T)
+# Area under curve is equal to 0.793. which means this model can predict between a non-responsive and responsive email approx. 79% of the time.
+# Best cut off depends on the cost of choosing true positive vs. false positive. 
