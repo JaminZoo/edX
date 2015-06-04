@@ -145,3 +145,105 @@ auc = as.numeric(performance(predicROCR, "auc")@y.values)
 plot(perfROCR, colorize = T)
 # Area under curve is equal to 0.793. which means this model can predict between a non-responsive and responsive email approx. 79% of the time.
 # Best cut off depends on the cost of choosing true positive vs. false positive. 
+
+********************************************
+# Detecting Vandalism on Wikipedia - predict whether a revision is genuine edit or vandalism
+# vandal is the dependent variable and come be either 1 (edit vandalism) or 0 (not vandalism)
+  
+wiki = read.csv("wiki.csv", stringsAsFactors = F)
+# Build corpus
+corpusAdded = Corpus(VectorSource(wiki$Added))
+# Remove english-language stop words
+corpusAdded = tm_map(corpusAdded, removeWords, stopwords("english"))
+# Stem the words
+corpusAdded = tm_map(corpusAdded, stemDocument)
+# Build Document Term Matrix
+dtmAdded = DocumentTermMatrix(corpusAdded)
+# Matrix shows total of 6675 terms in a total of 3876 entries in Added
+
+# Filter out sparse terms by keeping only the terms that appear in 0.3% or more of the revisions
+sparseAdded = removeSparseTerms(dtmAdded, 0.997)
+
+# Convert this filtered terms set into a new data frame and prepend all the words of this new data frame with the letter A
+wordsAdded = as.data.frame(as.matrix(sparseAdded))
+colnames(wordsAdded) = paste("A", colnames(wordsAdded))
+# Words in new data frame equals 166
+
+# Repeat previous 4 steps of creating corpus, remove stopwords, stem words, dtm) for new data frame called called wordsRemoved and prepend all the words with the letter R
+corpusRemoved = Corpus(VectorSource(wiki$Removed))
+corpusRemoved = tm_map(corpusRemoved, removeWords, stopwords("english"))
+corpusRemoved = tm_map(corpusRemoved, stemDocument)
+dtmRemoved = DocumentTermMatrix(corpusRemoved)
+sparseRemoved = removeSparseTerms(dtmRemoved, 0.997)
+wordsRemoved = as.data.frame(as.matrix(sparseRemoved))
+colnames(wordsRemoved) = past("R", colnames(wordsRemoved))
+# Words in removed data frame equals 162
+
+# Combine these two data frames into a single data frame
+wikiWords = cbind(wordsAdded, wordsRemoved)
+# Add Vandal column
+wikiWords$Vandal = wiki$Vandal
+
+# Spit data set into training and testing set
+set.seed(123)
+split = sample.split(wikiWords$Vandal, SplitRatio = 0.7)
+train = subset(wikiWords, split == T)
+test = subset(wikiWords, split == F)
+# Accuracy of baseline test set is equal to 618 / 11163 = 0.53
+
+# Build a CART model using the train set (without using cp or minbucket values)
+wikiCART = rpart(Vandal ~., data = train, method = "class")
+predicCART = predict(wikiCART, newdata= test, type = 'class')
+table(test$Vandal, predicCART)
+# Accuracy of CART model of predicting vandalism in entry is equal to 618 +12 / 1163 = 0.542
+# This shows a slight improvement over the baseline
+prp(wikiCART)
+
+# Given the small improvement observed using the CART model, we should look to two other techniques (other than words) to predict if tweets are vandalism
+# Look for occurence of http in Added column to detect web addresses that may be the cause of valiasm
+
+wikiWords2 = wikiWords
+# Use the grepl function to search for occurence of a string in one string and returns TRUE or FALSE
+# ifelse statement returns 1 if http is found in Added column and 0 if absent
+wikiWords2$HTTP = ifelse(grepl("http",wiki$Added,fixed=TRUE), 1, 0)
+# Occurence of http (or a link) in revisions equals 217. 
+
+# Split the copied data frame wikiWords2 and split into train and test sets
+wikiTrain2 = subset(wikiWords2, split == T)
+wikiTest2 = subset(wikiWords2, split == F)
+
+# Build CART model using the split variable
+wikiCART2 = rpart(Vandal ~ ., data = wikiTrain2, method = 'class')
+predicCART2 = predict(wikiCART2, newdata= wikiTest2, type = 'class')
+table(wikiTest2$Vandal, predicCART2)
+# New accuracy for this training and testing set with HTTP is equal to 609+57 / 1163 = 0.573
+# Compared with the original CART model, there is an increase in accuracy of approx. 3% 
+
+# Find the occurence of words themselves rather than exact occurence of specific words like http using the DTM
+# Count words added and removed (from respective DTMs), then create a column for each and add to wikiWords2 data frame
+wikiWords2$NumWordsAdded = rowSums(as.matrix(dtmAdded)) # Avg. words added is 4.05
+wikiWords2$NumWordsRemoved = rowSums(as.matrix(dtmRemoved)) # Avg. words removed is 3.51
+
+# Split the data frame again
+wikiTrain3 = subset(wikiWords2, split == T)
+wikiTest3 = subset(wikiWords2, split == F)
+# Build CART model and prediction accuracy
+wikiCART3 = rpart(Vandal ~ ., data = wikiTrain3, method = 'class')
+predictCART3 = predict(wikiCART3, newdata = wikiTest3, type = 'class')
+table(wikiTest3$Vandal, predictCART3)
+# Accuracy is now 514 + 248 / 1163 = 0.655, an improvement over the CART model focused on occurence of words rather than total occurence 
+
+# Finish off by investigating the effect of the two remaining independent variables in the original data frame i.e. Minor and Loggedin
+wikiWords3 = wikiWords2
+wikiWords3$Minor = wiki$Minor
+wikiWords3$Loggedin = wiki$Loggedin
+
+# Build CART model and make predictions of accuracy when introducing these two new variables
+wikiTrain4 = subset(wikiWords3, split == T)
+wikiTest4 = subset(wikiWords3, split == F)
+wikiCART4 = rpart(Vandal ~., data = wikiTrain4, method = 'class')
+predicCART4 = predict(wikiCART4, newdata = wikiTest4, type = 'class')
+table(wikiTest4$Vandal, predicCART4)
+# Accuracy is equal to 595 + 241 / 1163 = 0.719, an improvement over the CART3 model by approx. 6.5%
+prp(wikiCART4)
+# The tree shows that with only an addition of a single branch i.e. minimal increase in complexity, we were able to increase our accuracy from the baseline and other CART models
