@@ -247,3 +247,123 @@ table(wikiTest4$Vandal, predicCART4)
 # Accuracy is equal to 595 + 241 / 1163 = 0.719, an improvement over the CART3 model by approx. 6.5%
 prp(wikiCART4)
 # The tree shows that with only an addition of a single branch i.e. minimal increase in complexity, we were able to increase our accuracy from the baseline and other CART models
+
+ *******************************************
+# Automating the review of medical journals
+
+trials = read.csv("clinical_trial.csv", stringsAsFactors = F)
+
+# Max length of journal abstract
+summary(nchar(trials$abstract)) # 3708 characters
+# Number of jounrals with no abstract
+sum(nchar(trials$abstract) == 0) # Total of 112
+# Journal with shortest title 
+which.min(nchar(trials$title)) # Which returns row 1258
+trials[1258,1] # Which produces the journal with title "A decade of letrozole: FACE."
+
+# Create a corpus for each of the Title and Abstract variables
+corpusTitle = Corpus(VectorSource(trials$title))
+corpusAbstract = Corpus(VectorSource(trials$abstract))
+
+# Convert corpuses to lowercase
+corpusTitle = tm_map(corpusTitle, tolower)
+corpusTitle = tm_map(corpusTitle, PlainTextDocument)
+corpusAbstract = tm_map(corpusAbstract, tolower)
+corpusAbstract = tm_map(corpusAbstract, PlainTextDocument)
+
+# Remove punctuation
+corpusTitle = tm_map(corpusTitle, removePunctuation)
+corpusAbstract = tm_map(corpusAbstract, removePunctuation)
+
+# Remove stop words
+corpusTitle = tm_map(corpusTitle, removeWords, stopwords("english"))
+corpusAbstract = tm_map(corpusAbstract, removeWords, stopwords("english"))
+
+# Stem words
+corpusTitle = tm_map(corpusTitle, stemDocument)
+corpusAbstract = tm_map(corpusAbstract, stemDocument)
+
+# Build Document Term Matrix 
+dtmTitle = DocumentTermMatrix(corpusTitle) # 2833 terms in 1860 title entries
+dtmAbstract = DocumentTermMatrix(corpusAbstract) # 12224 terms in 1860 entries
+
+# Remove sparse terms with only 5% of those appearing most frequently left
+dtmTitle = removeSparseTerms(dtmTitle, 0.95) # Terms reduced to 31 from 2833
+dtmAbstract = removeSparseTerms(dtmAbstract, 0.95) # Terms reduced to 335 from 12224
+
+# Convert corpus to data frame
+dtmTitle = as.data.frame(as.matrix(dtmTitle))
+dtmAbstract = as.data.frame(as.matrix(dtmAbstract))
+
+# Combine dtmTitle and dtmAbstract into a single data frame to create model and make predictions
+# Use paste0 function that concatentate strings
+colnames(dtmTitle) = paste0("T", colnames(dtmTitle))
+colnames(dtmAbstract) = paste0("A", colnames(dtmAbstract))
+
+# Combine these two data frames into a single data frame
+dtm = cbind(dtmTitle, dtmAbstract)
+# Add trials variable as column in new data frame
+dtm$trial = trials$trial
+
+# Split data frame into train and test, using split ratio of 0.7
+set.seed(144)
+split = sample.split(dtm$trial, 0.7)
+train = subset(dtm, split == T)
+test = subset(dtm, split == F)
+table(train$trial)
+# Accuracy of baseline of predicting most frequenct outcome in training set (not a trial) is 730 / 1302 = 0.561
+
+# Build CART model and make predictions only on the train set
+trialCART = rpart(trial ~., data = train, method = 'class')
+trialPredic = predict(trialCART)[,2] # omitt type = 'class' and keep only the second column of the predict output
+# Maximum predicted probability for any result is equal to 0.8719
+prp(trialCART)
+# Tree splits on the title term 'phase' first
+table(train$trial, trialPredic >= 0.5)
+# Accuracy of the CART model on the training set is 441 + 631 / 1302 = 0.823
+# Sensitivity = 441 / 441 + 131 = 0.77 
+# Specificity = 631 / 99 + 631 = 0.864
+
+# Now evaluate the CART model on the testing set
+predTest = predict(trialCART, newdata = test)[,2]
+table(test$trial, predTest >= 0.5)
+# Accuracy of testing set for predicting that a result is a trial is (261 + 162)/558 = 0.758
+# AUC of the testing set is
+testROCR = prediction(predTest, test$trial)
+auc = as.numeric(performance(testROCR, "auc")@y.values)
+ROCRPperf = performance(testROCR, 'tpr', 'fpr')
+# Area under chart is equal to 0.837
+
+**********************************************
+# Spam email filtering (spam vs ham)
+
+email = read.csv("emails.csv", stringsAsFactors = F)  
+# Total of 5278 emails of which 1368 are flagged as spam
+# Emails with single (rather than multiple) starting word of 'Subject' may suggest a spam email
+
+# Email with the longest number of characters
+max(nchar(email$text)) # max length = 43952
+# Row that contains shortest number of characters
+which.min(nchar(email$text)) # Row 1992, with only 13 characters
+
+# Build corpus, convert to lowercase, remove punctuation, remove english stopwords, stem document and create DTM
+corpus = Corpus(VectorSource(email$text))
+corpus = tm_map(corpus, tolower)
+corpus = tm_map(corpus, PlainTextDocument)
+corpus = tm_map(corpus, removePunctuation)
+corpus = tm_map(corpus, removeWords, stopwords("english"))
+corpus = tm_map(corpus, stemDocument)
+dtm = TermDocumentMatrix(corpus)
+# Total of 28687 terms in 5728 emails
+
+# Limit dtm to contain terms appearing at least 5% of the document. 
+spdtm = removeSparseTerms(dtm, 0.95)
+spdtm
+# Removed terms dtm now shows 330 terms in the 5278 emails.
+
+# Build a data frame from spdtm and use make.names function to make the variable names of the data frame valid
+emailSparse = as.data.frame(as.matrix(spdtm))
+colnames(emailSparse) = make.names(colnames(emailSparse))
+#Word stem that occurs most frequently accross all emails in emailSparse data frame
+
+emailSparse$spam = email$spam
