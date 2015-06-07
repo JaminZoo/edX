@@ -186,3 +186,125 @@ table(clusterGroups, KMC$cluster)
 
 ****************************************
 # Market segmentation for airlines
+airlines = read.csv("AirlinesCluster.csv")
+
+# Some of the variables in the data set have large scales e.g. Balance and Bonus Miles and some small e.g. BonusTrans and FlightTrans
+# In order to prevent large scale variables influencing the clustering, we need to normalize the data
+
+# Use the preProcess function in the caret package to peformce pre-processing and predict function to normalize the data set
+preProc = preProcess(airlines) 
+airlinesNorm = predict(preProc, airlines)
+# All variables in new data set should have mean equal to 0 and standard deviation of 1.
+
+# Peform hierarchical clustering on the new normalized data frame
+distances = dist(airlinesNorm, method = 'euclidean')
+clusters = hclust(distances, method = 'ward.D')
+plot(clusters)
+# Choice of 2, 3 or 7 clusters identified as suitable. Decide on 5 cluster groups to cut tree into.
+
+clusterGroups = cutree(clusters, k = 5)
+table(clusterGroups) # Shows that there are 776 data points in cluster 1. 
+
+# Compute the mean values for each of the variables in each cluster group (centroids of clusters)
+tapply(airlines$Balance, clusterGroups, mean) # Balance variable
+# Or you can use colMeans(subset(airlines, clusterGroups == 1)) to average each column/variable in each cluster group
+tapply(airlines$QualMiles, clusterGroups, mean) # QualMiles variable
+tapply(airlines$BonusMiles, clusterGroups, mean) # BonusMiles variable
+tapply(airlines$BonusTrans, clusterGroups, mean) # BonusTrans variable
+tapply(airlines$FlightMiles, clusterGroups, mean) # FlightMiles variable
+tapply(airlines$FlightTrans, clusterGroups, mean) # FlightTrans variable
+tapply(airlines$DaysSinceEnroll, clusterGroups, mean) # DaysSineEnroll variable
+# Or even simpler, use: 
+lapply(split(airlines, clusterGroups), colMeans) #to get a summary of all cluster groups and variables
+
+# Cluster 1 has highest value for DaysSinceEnroll than all other cluster groups, which suggests this customer segment is very loyal but fly infruently
+# Cluster 2 has highest value for QualMiles, FlightMiles and FlightTrans, suggesting customers with a large amount of miles, mostly accumulated through flight transactions.
+# Cluster 3 has highest value for Balance, BonusMiles and BonusTrans, suggesting  customers with a lot of miles, and who have earned the miles mostly through bonus transactions.
+# Cluster 4 has highest value for No value out of all cluster groups. These customers have the smallest value in DaysSinceEnroll, but they are already accumulating a reasonable number of miles
+# Cluster 5 has highest value for No value out of all cluster groups. Customers here have lower values for all variables. 
+
+# Run k-means clustering on the normalized data using 5 clusters and 1000 max iterations
+set.seed(88)
+KMC = kmeans(airlinesNorm, centers = 5, iter.max = 1000)
+str(KMC)
+table(KMC$cluster) # shows number of observations in each cluster
+
+*****************************************
+# Predicting stock prices with cluster-then-predict i.e. create cluster groups and build cluster specific models
+
+stocks = read.csv("StocksCluster.csv")
+# PositiveDec is the variable that shows whether a stock (in year of the observation) had a positive return in December (1 if yes, 0 if no)
+# All values represent proportional changes of stock price for that month in % e.g. 0.05 equals a 5% incrase from previous month stock price
+
+# Largest correlation between any two variables
+cor(stocks) # highest correlation is between months Oct and Nov (0.1916)
+
+# Month with the highest and lowest mean return across all observations
+colMeans(stocks) # Highest is April (0.026) and lowest is Sep (-0.0147)
+
+# Peform logistic regression first, splitting data into train and test sets
+set.seed(144)
+spl = sample.split(stocks$PositiveDec, SplitRatio = 0.7)
+train = subset(stocks, spl == T)
+test = subset(stocks, spl == F)
+stocksLogit = glm(PositiveDec ~., data = train, family = binomial)
+logitPredict = predict(stocksLogit, type = "response")
+table(train$PositiveDec, logitPredict > 0.5)
+# Overall accuracy of the training set is (990 + 3640) / 8106 = 0.571 (marginal improvement over baseline of 0.546)
+
+# The accuracy of the test set is then determined
+logitPredict2 = predict(stocksLogit, newdata = test, type = 'response')
+table(test$PositiveDec, logitPredict2 > 0.5)
+# Overall accuracy of testing set is (1553 + 417) / 3474 = 0.567
+
+# Perform k-means clustering to stocks data set
+# 1. Remove dependent variable first before creating clusters, since our goal is to predict the outcome variable and including it will make the clustering invalid.
+limitedTrain = train # make copy of training set and name it limitedTrain
+limitedTrain$PositiveDec = NULL # Set dependent variable to empty
+limitedTest = test
+limitedTest$PositiveDec = NULL
+
+# 2. Normalize the train and test sets, but using just the training set and preProcess function to perform normalization
+preProc = preProcess(limitedTrain) 
+trainNorm = predict(preProc, limitedTrain) # mean equals approx. 0
+testNorm = predict(preProc, limitedTest) # mean equals -0.000419
+
+# 3. Run k-means clustering on the normailzed training set
+set.seed(144)
+KMC = kmeans(trainNorm, centers = 3)
+table(KMC$cluster) # Summary shows cluster 2 has the largest number of observations of 4696
+
+# Use the flexclust package to obtain training set and testing set cluster assignments for our observations
+KMC.kcca = as.kcca(KMC, trainNorm)
+clusterTrain = predict(KMC.kcca)
+clusterTest = predict(KMC.kcca, newdata = testNorm)
+table(clusterTest) # Summary of test-set observations assigned to each cluster
+
+# Subset the training and testing set into 3, one for each cluster
+train1 = subset(train, clusterTrain == 1 )
+train2 = subset(train, clusterTrain == 2)
+train3 = subset(train, clusterTrain == 3)
+test1 = subset(test, clusterTest == 1)
+test2 = subset(test, clusterTest == 2)
+test3 = subset(test, clusterTest == 3)
+mean(train1$PositiveDec) # Returns the highest average value of the dependent variable
+
+# Build predictive model (logistic regression) for each of the 3 subsets, trained on their respective training set e.g. stockModel1 trained on train1
+logitModel1 = glm(PositiveDec ~., data = train1, family = binomial)
+logitModel2 = glm(PositiveDec ~., data = train2, family = binomial)
+logitModel3 = glm(PositiveDec ~., data = train3, family = binomial)
+
+# Make predictions using the 3 logistic models on each of the 3 testing sets
+predict1 = predict(logitModel1, newdata = test1, type = 'response')
+predict2 = predict(logitModel2, newdata = test2, type = 'response')
+predict3 = predict(logitModel3, newdata = test3, type = 'response')
+table(test1$PositiveDec, predict1 > 0.5) # Accuracy of testing set equals (30+774)/1298 = 0.619
+table(test2$PositiveDec, predict2 > 0.5) # Accuracy of testing set equals (388+757)/2080 = 0.55
+table(test3$PositiveDec, predict3 > 0.5) # Accuracy of testing set equals (49+13)/96 = 0.645
+
+# Finally, compute overall test set accuracy by combining the test set predictions into a single vector and all true outcomes in a single vector
+AllPredictions = c(predict1, predict2, predict3)
+AllOutcomes = c(test1$PositiveDec, test2$PositiveDec, test3$PositiveDec)
+table(AllOutcomes, AllPredictions > 0.5) # Overall accuracy of test set is (1544+467)/3474 = 0.5788
+
+
