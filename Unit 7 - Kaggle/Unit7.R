@@ -34,7 +34,7 @@ trainNYT = read.csv("NYTimesBlogTrain.csv", stringsAsFactors = F)
 testNYT = read.csv("NYTimesBlogTest.csv", stringsAsFactors = F)
 testNYT$Popular = NA
 combinedDF = rbind(trainNYT, testNYT)
-dependent = as.factor(trainNYT$Popular)
+
 
 ################
 # edX Helper Guide
@@ -209,7 +209,7 @@ submission06 = data.frame(UniqueID = testNYT$UniqueID, Probability1 = logitPredi
 write.csv(submission05, "submission05.csv", row.names=FALSE)
 
 #################
-#  Attempt 3
+#  Attempt 3 - Data filtering
 #################
 # Output length of headline for each observation (no. of words)
 for (i in 1:nrow(trainNYT)) { trainNYT$Length[i] = length(strsplit(trainNYT[i,4], " ")[[1]])}
@@ -321,6 +321,28 @@ combinedDF$SectionName[combinedDF$NewsDesk == "Sports"] = "Sports"
 combinedDF$SectionName[combinedDF$NewsDesk == "Styles"] = "Style" # Try both Technology
 combinedDF$SectionName[combinedDF$NewsDesk == "TStyle"] = "Magazine"
 
+# Analyse terms in the test and train sets by creating a function which accepts a term to search in the Head and Test variables of both data sets
+analyseTerms = function(terms, ignoreCase=TRUE)
+{
+  idxHeadTrain = which(grepl(terms, combinedTrain$Headline, ignore.case=ignoreCase))
+  idxTextTrain = which(grepl(terms, combinedTrain$Text,     ignore.case=ignoreCase))
+  idxHeadTest  = which(grepl(terms, combinedTest$Headline,  ignore.case=ignoreCase))
+  idxTextTest  = which(grepl(terms, combinedTest$Text,      ignore.case=ignoreCase))
+  
+  avgPopHeadTrain = mean(as.numeric(as.character(combinedTrain$Popular[idxHeadTrain])))
+  numArtHeadTrain = length(idxHeadTrain)
+  avgPopTextTrain = mean(as.numeric(as.character(combinedTrain$Popular[idxTextTrain])))
+  numArtTextTrain = length(idxTextTrain)
+  numArtHeadTest  = length(idxHeadTest)
+  numArtTextTest  = length(idxTextTest)
+  
+  return(c(avgPopHeadTrain, numArtHeadTrain, 
+           avgPopTextTrain, numArtTextTrain, 
+           numArtHeadTest, numArtTextTest))
+}
+
+analyseTerms("obama")
+
 # Filling in the SubsectionNames
 # Identify variables that have empty values and then use pattern matching to identify set phrases within Headline of each article
 indx = which(combinedDF$NewsDesk=="" & combinedDF$SectionName=="" & combinedDF$SubsectionName=="" &
@@ -344,12 +366,12 @@ combinedDF$NewsDesk[indx] = "National"
 combinedDF$SectionName[indx] = "U.S."
 combinedDF$SubsectionName[indx] = "Politics"
 
-idx = which(combinedDF$SectionName=="" &
+indx = which(combinedDF$SectionName=="" &
               grepl(paste0("PAC|GOP|G.O.P.|NRA|N.R.A."),
                     combinedDF$Text, ignore.case=FALSE))
-combinedDF$NewsDesk[idx] = "National"
-combinedDF$SectionName[idx] = "U.S."
-combinedDF$SubsectionName[idx] = "Politics"
+combinedDF$NewsDesk[indx] = "National"
+combinedDF$SectionName[indx] = "U.S."
+combinedDF$SubsectionName[indx] = "Politics"
 
 # Fill in all remaining emtpy variable values with "Missing" so that randomForest can be applied (can not do so with missing values in place)
 combinedDF$NewsDesk[which(combinedDF$NewsDesk == "")] = "Missing"
@@ -370,7 +392,7 @@ combinedDF$Popular = as.factor(combinedDF$Popular)
 combinedDF$LogWord = log(combinedDF$WordCount + 1)
 
 # PLot distribution of word count with popular variable
-ggplot(trainNYT, aes(x=LogWord, fill=Popular)) + 
+ggplot(combinedTrain, aes(x=LogWord, fill=Popular)) + 
   geom_density(aes(y=..scaled..), alpha=0.4) +
   ggtitle("Distribution of LogWord") +
   xlab("log(1 + WordCount)") +
@@ -378,17 +400,32 @@ ggplot(trainNYT, aes(x=LogWord, fill=Popular)) +
 # Graph shows a definite difference between the distributions of popular and unpopular articles based on log word count
 # Articles classified as popular i.e. = 1 have a higher log word mean value than those deemed unpopular i.e = 0
 
+PopularCombinedTrain   = subset(combinedTrain, combinedTrain$Popular==1)
+UnpopularCombinedTrain = subset(combinedTrain, combinedTrain$Popular==0)
+
+t.test(PopularCombinedTrain$LogWord, UnpopularCombinedTrain$LogWord)
+var.test(PopularCombinedTrain$LogWord, UnpopulalCombinedTrain$LogWord)
+
 # Day of week - popularity of article given the day of the week it was published
 combinedDF$DayOfWeek = as.factor(weekdays(combinedDF$PubDate)) # convert Weekday variable from num to factor data type using weekdays function to extract weekday from PubDate
 combinedDF$DayOfWeek = factor(combinedDF$DayOfWeek, levels = c("Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"))
 
-ggplot(combinedDF, aes(x=LogWord, fill=Popular)) + 
+ggplot(combinedTrain, aes(x=LogWord, fill=Popular)) + 
   geom_density(aes(y=..scaled..), alpha=0.4) +
   ggtitle("Distribution of LogWC") +
   xlab("log(1 + WordCount)") +
   theme(axis.title.y = element_blank()) + 
   facet_wrap(~DayOfWeek, ncol = 1)
 # Graph shows no real definitive indicator of which day of week produces more popular article. However, still indicates higher word count values tend to be more popular than lower values
+
+# Character and word count on both the headline and summary text, does length of text lead to more popular article based on search engine results ranking higher for different length headline and summary lenghts?
+combinedDF$HeadlineCharCount = nchar(combinedDF$Headline) #Character count in headline
+combinedDF$SummaryCharCount  = nchar(combinedDF$Summary) # Character count in Summary
+# Use regreular expression function gregexpr to filter out words in each of headline and summary variable
+combinedDF$HeadlineWordCount = sapply(gregexpr("\\W+", gsub("[[:punct:]]", "", combinedDF$Headline)), length) + 1 # Word count in headline
+combinedDF$SummaryWordCount  = sapply(gregexpr("\\W+", gsub("[[:punct:]]", "", combinedDF$Summary)), length) + 1 # Word count in summary
+# Output reveals that for headline, mean chracacter and word count is 46.6 and 7.6 respectively
+# Mean character and word count for summary is 128.5 and 21.2 respectively. 
 
 # Timing of article posts, both the day of the week and the hour of the day
 table(combinedDF$Weekday, combinedDF$Popular) # Shows that Sunday, then Saturday have higher probability of a popular article (33% and 27% respectively)
@@ -418,3 +455,24 @@ ggplot(trainNYT, aes(x=NumDailyArticles, fill=Pop)) +
   xlab("# Daily Articles Published") +
   scale_fill_discrete(name="Popular") +
   theme(axis.title.y = element_blank())
+# Articles per hour and section
+DailySectionArties = as.data.frame(table(combinedDF$PubDay, combinedDF$SectionName))
+names(DailySectionArties) = c("PubDay","SectionName", "NumDailySectionArticles")
+combinedDF = merge(combinedDF, DailySectionArties, all.x = T)
+
+
+###########################################
+# Feature Engineering and Predictive Model building
+###########################################
+# Decide on threshold for headline character count to be considered popular. 48 chosen as it allows for suffic NYTimes.com to be included whilst still under 65 characters (deemed to be threshold for popular blog entries)
+combinedDF$SEO = as.factor(ifelse(combinedDF$HeadlineCharCount<=48, 1, 0))
+
+# Continue applying features to headline based on common punctuation e.g. question mark, exclamation marks etc.
+combinedDF$Question =  as.factor(ifelse(grepl("?", combinedDF$Headline), 1, 0))
+combinedDF$Exclamation = as.factor(ifelse(grepl("!", combinedDF$Headline), 1, 0))
+combinedDF$HowTo = as.factor(ifelse(grepl("^how to", combinedDF$Headline, ignore.case=TRUE), 1, 0)) #ignore case of headline text
+combinedDF$Negative = as.factor(ifelse(grepl("<(never|do not|dont|don't|stop|quit|worst|bad|fail)>", combinedDF$Headline, ignore.case=TRUE), 1, 0)) # find occurences of words with negative meaning
+combinedDF$SpecialWord = as.factor(ifelse(grepl("<(strange|incredible|epic|simple|ultimate|great|sex)>", 
+                                                combinedDF$Headline, ignore.case=TRUE), 1, 0))
+
+  
