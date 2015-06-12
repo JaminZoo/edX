@@ -144,14 +144,74 @@ ggplot(murdersMap, aes(x = long, y = lat, group = group, fill = MurderRate)) +
 ggplot(murdersMap, aes(x = long, y = lat, group = group, fill = GunOwnership)) + 
   geom_polygon(color = "black") + scale_fill_gradient(low = "black", high = "red", guide = "legend")
 
+************************************************************
+# Good and Bad Visualization
+  
+intl = read.csv("intl.csv")
+
+ggplot(intl, aes(x = Region, y = PercentOfIntl)) +
+  geom_bar(stat = "identity") + # statistical transformation to used on the data e.g. identity maps height based on y-values
+  geom_text(aes(label = PercentOfIntl)) # Adds label on top of each bar corresponding to y-value (PercentOfIntl)
+
+# Change Region to ordered factor to plot Region by decreasing PercentOfIntl value
+intl = transform(intl, Region = reorder(Region, -PercentOfIntl)) # reorder takes its first argument as categorical variable, and reorders its levels based on values of second variable
+
+# Convert to 100% for all PercentOfIntl values
+intl$PercentOfIntl = intl$PercentOfIntl * 100
+
+ggplot(intl, aes(x = Region, y = PercentOfIntl)) +
+  geom_bar(stat = "identity", fill = "salmon2") + 
+  geom_text(aes(label = PercentOfIntl), vjust = -0.5) + 
+  ylab("Percent of Int. Students") +
+  theme(axis.title.x = element_blank(), axis.text.x = element_text(angle = 35, hjust = 1))
+  
+# Student data for all countries in the World
+
+intall = read.csv("intlall.csv", stringsAsFactors = F)
+
+# Convert all N/A terms to 0 
+intall[is.na(intall)] = 0
+
+# Load world map
+worldMap = map_data("world")
+
+# Merge world map and intall data frames using the Region and Citizenship variables respectively
+worldMap = merge(worldMap, intall, by.x = "region", by.y = "Citizenship")
+
+# Plot world map
+ggplot(worldMap, aes(x = long, y = lat, group = group)) +
+  geom_polygon(fill = "white", color = "black") +
+  coord_map("mercator")
+
+# reorder groups of worldMap so it can be plotted based on border of each region
+worldMap = worldMap[order(worldMap$group, worldMap$order),]
+# Now worldMap data frame sorts Order column ascending 
+# replot world map. 
+
+# Convert name of China in intall to match that of worldMap region i.e. PRC to China
+intall$Citizenship[intall$Citizenship == "China (People's Republic Of)"] = "China"
+
+# Perform merge again on intall and map_data data frames with updated China region
+worldMap = merge(map_data('world'), intall, by.x = "region", by.y = "Citizenship")
+# Perform reordering of order column in worldMap
+worldMap = worldMap[order(worldMap$group, worldMap$order),]
 
 
+# Plot worldMap
+ggplot(worldMap, aes(x = long, y = lat, group = group)) +
+  geom_polygon(aes(fill = Total), color = "black") +
+  coord_map("mercator")
 
+# Plot worldMap using orthograthic projection with custom 3D orientation to view certain angle of world region
+ggplot(worldMap, aes(x = long, y = lat, group = group)) +
+  geom_polygon(aes(fill = Total), color = "black") +
+  coord_map("ortho", orientation = c(-5,130,0))
 
+# Households data 
+house = read.csv("households.csv")
 
-
-
-
-
+# Melt coverts a 2D data frame into a form acceptable to ggplot
+# Doing this converts every value in the data frame into its own row, rather than segmented in its own column
+house = melt(house, id = "Year")
 
 
