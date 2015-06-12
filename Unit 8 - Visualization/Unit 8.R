@@ -198,9 +198,7 @@ worldMap = worldMap[order(worldMap$group, worldMap$order),]
 
 
 # Plot worldMap
-ggplot(worldMap, aes(x = long, y = lat, group = group)) +
-  geom_polygon(aes(fill = Total), color = "black") +
-  coord_map("mercator")
+
 
 # Plot worldMap using orthograthic projection with custom 3D orientation to view certain angle of world region
 ggplot(worldMap, aes(x = long, y = lat, group = group)) +
@@ -213,5 +211,64 @@ house = read.csv("households.csv")
 # Melt coverts a 2D data frame into a form acceptable to ggplot
 # Doing this converts every value in the data frame into its own row, rather than segmented in its own column
 house = melt(house, id = "Year")
+
+# Now we can use ggplot to assign x, y variables according to melt output
+ggplot(house, aes(x = Year, y = value, color = variable)) +
+  geom_line(size = 2) +
+  geom_point(size = 5)
+
+***********************************************
+# Election forecasting - plotting results of prediction model conducted in Unit 3 on map 
+  
+statesMap = map_data("state")
+# Variable region defines the boundary of each state, and the variable order defines the order each of the long/lat points should be connected
+
+# plot map of U.S
+ggplot(statesMap, aes(x = long, y = lat, group = group)) + geom_polygon(fill = "white", color = "black")
+
+# Load in Polling data set and split into train and test sets
+polling = read.csv("PollingImputed.csv")
+Train = subset(polling, Year >= 2004 & Year <= 2008)
+Test = subset(polling, Year == 2012)
+
+# Create logistic regression model using the train set
+mod2 = glm(Republican ~ SurveyUSA + DiffCount, data = Train, family = "binomial")
+
+# Create prediction model using the test set (2012)
+TestPrediction = predict(mod2, newdata = Test, type = "response")
+table(Test$Republican, TestPrediction >= 0.5)
+
+# Create a vector for the Republican/Democrate predictions
+TestPredictionBinary = as.numeric(TestPrediction > 0.5)
+
+# Place prediction output into new data frame along with this binary vector and the States
+predictionDF = data.frame(TestPrediction, TestPredictionBinary, Test$State)
+# There are a total of 22 Republican and 23 Democrate predicted outomes
+
+# Merge prediction and statesMap data frames
+predictionDF$region = tolower(predictionDF$Test.State) # First, convert State values to lower case to match statesMap Region column
+predictMap = merge(statesMap, predictionDF, by="region") # Merge by common variable 'region', default setting is to exclude observations not in second data frame but are foudn in the first
+predictMap = predictMap[order(predictMap$order),] # Re order map 'Order' variable to be sorted in ascending order
+# Observations of predictMap will be lower than statesMap due to dropping a number of states
+
+# Plot state map showing location of prediction results
+ggplot(predictMap, aes(x = long, y = lat, group = group, fill = TestPredictionBinary)) +
+  geom_polygon(color = "black") 
+# This gives us gradient output of predicted outcomes i.e. between 0 and 1, we would like to observe a discrete outcome
+
+# Plot map that shows discrete outcomes showing one of two colors (Red and Blue) rather than gradient of colors
+ggplot(predictMap, aes(x = long, y = lat, group = group, fill = TestPredictionBinary)) + 
+  geom_polygon(color = "black") +
+  scale_fill_gradient(low = "blue", high = "red", guide = "legend", breaks= c(0,1), labels = c("Democrat", "Republican"), name = "Prediction 2012")
+
+# Plot of predicted outcomes on map
+ggplot(predictMap, aes(x = long, y = lat, group = group, fill = TestPrediction)) + 
+  geom_polygon(color = "black", linetype = 3, alpha = 0.5) +
+  scale_fill_gradient(low = "blue", high = "red", guide = "legend", breaks= c(0,1), labels = c("Democrat", "Republican"), name = "Prediction 2012")
+# The two maps (TesetPredictionBinary and TestPrediction) appear very similar due to the closesness of both variables to each other
+# we don't have a single predicted probability between 0.065 and 0.93.
+
+
+
 
 
