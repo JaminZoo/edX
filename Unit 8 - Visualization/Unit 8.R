@@ -268,7 +268,88 @@ ggplot(predictMap, aes(x = long, y = lat, group = group, fill = TestPrediction))
 # The two maps (TesetPredictionBinary and TestPrediction) appear very similar due to the closesness of both variables to each other
 # we don't have a single predicted probability between 0.065 and 0.93.
 
+****************************************
+# Social Network vizualisation
+# Verticies (nodes) represent facebook user, Edges represent link between other users/friends
+
+# Contain row observations that include endpoints V1 and V2 representing connection bewteen two users
+edges = read.csv("edges.csv") 
+
+# Contains the verticies or facebook users in the network
+users = read.csv("users.csv")
+
+# Average number of friends determined by considering each edge or connection in the edge data frame (146 observations)
+# Double this value since we need to consider both friend A and friend B together
+# Divide by total number of users: 292/59 = 4.949
+
+install.packages("igraph") # creats igraph from data frames or vice-versa
+# igraph takes data frame containing an edge list in first argument, then whether graph is directed (edges only point in one direction) and final argument containing verticies
+
+# Use igraph package to create graph using data frames edges and users, where directed argument is FALSE as we have bi-directional edge to edge
+g = graph.data.frame(edges, FALSE, users)
+plot(g, vertex.size=5, vertex.label=NA)
+# There are a number of groups of nodes where all the nodes in each group are connected 
+# but the groups are disjoint from one another, forming "islands" in the graph. Such groups are called "connected components," or "components" for short. 
+# There are a total of 4 components in this network - one large connected component, and three smaller components
+
+# The degree of each node/vertex is the number of friend the user has with others
+# use degree(g) to produce output of all degrees(friends) for each user
+degree(g)
+
+# Highlight the nodes(facebook users) that have higher a degree on the plot by changing the size of the verticies to be a function of their degrees i.e. larger verticies correspond to larger degrees
+V(g)$size = degree(g)/2+2 # V() is a function that allows you to perform operationon a subset of verticies of edges in  a graph
+plot(g, vertex.label = NA) # Exclude the vertex.size argument since we have just defined it for our particular application
+# plot shows that the users with more friend connections (degrees) as having larger verticies and those with few or none displaying very small vertex sizes
+# largest vertex was assigned a value of 18/2 + 2 = 11 and smallest was 0/2 + 2 = 2
+
+# Change the color of verticies based on geneder of user using the same V(g) function, but using color instead of size
+# We can access the attribuets of the users data frame within the graph as this was created when graph.data.frame was used
+V(g)$color = "black" # color all verticies black (shows gender that is undefined)
+V(g)$color[V(g)$gender == "A"] = "red" # color all gender = A red
+V(g)$color[V(g)$gender == "B"] = "gray" # color all gender = B gray
+
+# Color each vertice based on school attended
+V(g)$color[V(g)$school == "A"] = "red"
+V(g)$color[V(g)$school == "AB"] = "gray"
+# Plot shows that the two users who went to schools AB are also friends (share an edge) and that users with large degrees (Friends) attended school A and no school
 
 
+# Color each vertex based on locale
+V(g)$color[V(g)$locale == "A"] = "red"
+V(g)$color[V(g)$locale == "B"] = "gray"
+# 3D plot using rgl package and rplplot function
+install.packages("rgl")
+rglplot(g, vertex.label=NA)
 
+**********************************************
+# Creating world clouds of text data from tweets data set (used in early problem set)
+# A word cloud arranges the most common words in some text, using size to indicate the frequency of a word.  
+
+tweets = read.csv("tweets.csv", stringsAsFactors = F)
+  
+# Create corpus and perform text mining
+corpus = Corpus(VectorSource(tweets$Tweet))
+corpus = tm_map(corpus, tolower)
+corpus = tm_map(corpus, PlainTextDocument)
+corpus = tm_map(corpus, removePunctuation)
+corpus = tm_map(corpus, removeWords, stopwords("english"))
+dtm = DocumentTermMatrix(corpus)
+tweetsDF = as.data.frame(as.matrix(dtm))
+# There are 3780 unique words in the corpus of 1181 tweets
+
+install.packages("worldcloud")
+
+wordcloud(colnames(tweetsDF), colSums(tweetsDF)) # takes the number of words in each tweet as first argument and frequency of these words as second
+# Shows that the word apple is the most frequent word in the tweets (identified as largest word in wordcloud)
+
+# Rebuild corpus but with the apple word removed
+corpus2 = Corpus(VectorSource(tweets$Tweet))
+corpus2 = tm_map(corpus, tolower)
+corpus2 = tm_map(corpus, PlainTextDocument)
+corpus2 = tm_map(corpus, removePunctuation)
+corpus2 = tm_map(corpus, removeWords, c("apple", stopwords("english")))
+dtm2 = DocumentTermMatrix(corpus2)
+tweetsDF = as.data.frame(as.matrix(dtm2))
+wordcloud(colnames(tweetsDF), colSums(tweetsDF), c(2,0.25), max.words = 150, random.color = TRUE, colors = brewer.pal(9,"YlOrRd")[3:9])
+# iPhone is now the most frequent word after applie is removed from corpus
 
